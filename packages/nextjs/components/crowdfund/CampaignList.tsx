@@ -1,77 +1,17 @@
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import CrowdFundABI from "../../../hardhat/artifacts/contracts/Crowdfund.sol/Crowdfund.json";
 import { CampaignCard } from "./CampaignCard";
-import { getContract } from "viem";
-import { usePublicClient, useWalletClient } from "wagmi";
 import { useScaffoldReadContract } from "~~/hooks/scaffold-eth";
-
-interface CampaignDetails {
-  _owner: string;
-  _title: string;
-  _description: string;
-  _goal: bigint;
-  _raisedAmount: bigint;
-  _startTime: bigint;
-  _endTime: bigint;
-  _goalReached: boolean;
-  _fundsClaimed: boolean;
-  _contributorsCount: bigint;
-}
+import { useCampaignDetails } from "~~/hooks/scaffold-eth/useCampaignDetails";
 
 const CampaignDetails = ({ address }: { address: string }) => {
   const router = useRouter();
-  const [details, setDetails] = useState<CampaignDetails>();
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const publicClient = usePublicClient();
-  const { data: walletClient } = useWalletClient();
-
-  useEffect(() => {
-    const fetchDetails = async () => {
-      try {
-        const crowdfund = getContract({
-          address,
-          abi: CrowdFundABI.abi,
-          client: {
-            public: publicClient,
-            wallet: walletClient || undefined,
-          },
-        });
-
-        const rawDetails = await crowdfund.read.getCampaignDetails();
-
-        // Structure the array response into an object matching CampaignDetails interface
-        const structuredDetails: CampaignDetails = {
-          _owner: rawDetails[0],
-          _title: rawDetails[1],
-          _description: rawDetails[2],
-          _goal: rawDetails[3],
-          _raisedAmount: rawDetails[4],
-          _startTime: rawDetails[5],
-          _endTime: rawDetails[6],
-          _goalReached: rawDetails[7],
-          _fundsClaimed: rawDetails[8],
-          _contributorsCount: rawDetails[9],
-        };
-
-        setDetails(structuredDetails);
-      } catch (err) {
-        console.error("Error fetching campaign details:", err);
-        setError(err as Error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (publicClient) {
-      fetchDetails();
-    }
-  }, [address, publicClient, walletClient]);
+  const { details, isLoading, error } = useCampaignDetails(address);
 
   if (isLoading) return <div>Loading campaign details...</div>;
   if (error) return <div>Error loading campaign: {error.message}</div>;
   if (!details) return null;
+
+  // console.log(`details: ${details}`);
 
   return (
     <CampaignCard
