@@ -39,11 +39,23 @@ const CampaignDetails = ({ address }: { address: string }) => {
           },
         });
 
-        console.log(crowdfund);
+        const rawDetails = await crowdfund.read.getCampaignDetails();
 
-        const details = await crowdfund.read.getCampaignDetails();
-        console.log(details);
-        setDetails(details);
+        // Structure the array response into an object matching CampaignDetails interface
+        const structuredDetails: CampaignDetails = {
+          _owner: rawDetails[0],
+          _title: rawDetails[1],
+          _description: rawDetails[2],
+          _goal: rawDetails[3],
+          _raisedAmount: rawDetails[4],
+          _startTime: rawDetails[5],
+          _endTime: rawDetails[6],
+          _goalReached: rawDetails[7],
+          _fundsClaimed: rawDetails[8],
+          _contributorsCount: rawDetails[9],
+        };
+
+        setDetails(structuredDetails);
       } catch (err) {
         console.error("Error fetching campaign details:", err);
         setError(err as Error);
