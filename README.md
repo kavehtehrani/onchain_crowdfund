@@ -101,8 +101,8 @@ yarn test
 
 - Solidity 0.8.20
 - Scaffold-ETH 2
+- Next.js
 - Hardhat
 - Ethers.js
-- Next.js
 - TypeScript
 - TailwindCSS
