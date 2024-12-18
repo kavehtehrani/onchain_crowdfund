@@ -60,10 +60,6 @@ export const CampaignCard = ({ address }: { address: string }) => {
               <div className="stat-title">Raised</div>
               <div className="stat-value">{formatEther(details._raisedAmount)} ETH</div>
             </div>
-            <div className="stat">
-              <div className="stat-title">Progress</div>
-              <div className="stat-value">{progress}%</div>
-            </div>
           </div>
           <div className="mt-4">
             <div className="flex justify-between text-sm mb-2">
