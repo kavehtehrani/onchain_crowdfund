@@ -16,10 +16,13 @@ contract Crowdfund is ReentrancyGuard {
     error CampaignEnded();
     error NoContribution();
     error TransferFailed();
+    error CampaignCancelled();
+    error AlreadyWithdrawn();
 
     struct Contribution {
         uint256 amount;
         uint256 timestamp;
+        bool withdrawn;
     }
 
     address public owner;
@@ -32,6 +35,7 @@ contract Crowdfund is ReentrancyGuard {
     bool public initialized;
     bool public goalReached;
     bool public fundsClaimed;
+    bool public cancelled;
 
     mapping(address => Contribution[]) public contributions;
     address[] public contributors;
@@ -40,6 +44,7 @@ contract Crowdfund is ReentrancyGuard {
     event ContributionMade(address indexed contributor, uint256 amount);
     event FundsClaimed(address indexed owner, uint256 amount);
     event RefundClaimed(address indexed contributor, uint256 amount);
+    event CampaignCancelledEvent(uint256 timestamp);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Not owner");
@@ -73,14 +78,16 @@ contract Crowdfund is ReentrancyGuard {
     /// @notice Allows users to contribute ETH to the campaign
     function contribute() external payable isInitialized nonReentrant {
         if (block.timestamp >= endTime) revert CampaignEnded();
-        if (goalReached) revert GoalAlreadyReached();
+        if (cancelled) revert CampaignCancelled();
         if (msg.value == 0) revert NoContribution();
 
         if (contributions[msg.sender].length == 0) {
             contributors.push(msg.sender);
         }
 
-        contributions[msg.sender].push(Contribution({ amount: msg.value, timestamp: block.timestamp }));
+        contributions[msg.sender].push(
+            Contribution({ amount: msg.value, timestamp: block.timestamp, withdrawn: false })
+        );
 
         raisedAmount += msg.value;
         _updateTopDonors(msg.sender);
@@ -117,11 +124,43 @@ contract Crowdfund is ReentrancyGuard {
         }
     }
 
+    /// @notice Allows the owner to cancel the campaign
+    function cancelCampaign() external onlyOwner isInitialized {
+        if (fundsClaimed) revert GoalAlreadyReached();
+        cancelled = true;
+        emit CampaignCancelledEvent(block.timestamp);
+    }
+
+    /// @notice Allows contributors to claim refunds if goal is not reached or campaign is cancelled
+    function claimRefund() external isInitialized nonReentrant {
+        if (goalReached && !cancelled) revert GoalAlreadyReached();
+        if (block.timestamp < endTime && !cancelled) revert CampaignNotEnded();
+        if (cancelled) revert CampaignCancelled();
+
+        uint256 totalToRefund = 0;
+        Contribution[] storage userContributions = contributions[msg.sender];
+
+        for (uint256 i = 0; i < userContributions.length; i++) {
+            if (!userContributions[i].withdrawn) {
+                totalToRefund += userContributions[i].amount;
+                userContributions[i].withdrawn = true;
+            }
+        }
+
+        if (totalToRefund == 0) revert NoContribution();
+
+        (bool success, ) = msg.sender.call{ value: totalToRefund }("");
+        if (!success) revert TransferFailed();
+
+        emit RefundClaimed(msg.sender, totalToRefund);
+    }
+
     /// @notice Allows the owner to claim funds if goal is reached
     function claimFunds() external onlyOwner isInitialized nonReentrant {
         if (!goalReached) revert GoalNotReached();
         if (fundsClaimed) revert GoalAlreadyReached();
         if (block.timestamp < endTime) revert CampaignNotEnded();
+        if (cancelled) revert CampaignCancelled();
 
         fundsClaimed = true;
         (bool success, ) = owner.call{ value: raisedAmount }("");
@@ -130,29 +169,14 @@ contract Crowdfund is ReentrancyGuard {
         emit FundsClaimed(owner, raisedAmount);
     }
 
-    /// @notice Allows contributors to claim refunds if goal is not reached
-    function claimRefund() external isInitialized nonReentrant {
-        if (goalReached) revert GoalAlreadyReached();
-        if (block.timestamp < endTime) revert CampaignNotEnded();
-
-        uint256 totalContribution = getTotalContribution(msg.sender);
-        if (totalContribution == 0) revert NoContribution();
-
-        // Clear contributions before transfer to prevent reentrancy
-        delete contributions[msg.sender];
-
-        (bool success, ) = msg.sender.call{ value: totalContribution }("");
-        if (!success) revert TransferFailed();
-
-        emit RefundClaimed(msg.sender, totalContribution);
-    }
-
     /// @notice Returns total contribution of an address
-    function getTotalContribution(address _contributor) public view returns (uint256 total) {
+    function getTotalContribution(address _contributor) public view returns (uint256) {
+        uint256 total = 0;
         Contribution[] memory userContributions = contributions[_contributor];
         for (uint256 i = 0; i < userContributions.length; i++) {
             total += userContributions[i].amount;
         }
+        return total;
     }
 
     /// @notice Returns campaign details
@@ -169,7 +193,8 @@ contract Crowdfund is ReentrancyGuard {
             uint256 _endTime,
             bool _goalReached,
             bool _fundsClaimed,
-            uint256 _contributorsCount
+            uint256 _contributorsCount,
+            bool _cancelled
         )
     {
         return (
@@ -182,7 +207,8 @@ contract Crowdfund is ReentrancyGuard {
             endTime,
             goalReached,
             fundsClaimed,
-            contributors.length
+            contributors.length,
+            cancelled
         );
     }
 
