@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { formatEther, parseEther } from "viem";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
+import { Toast } from "~~/components/Toast";
 import { useCampaignDetails } from "~~/hooks/scaffold-eth/useCampaignDetails";
+import { useToast } from "~~/hooks/useToast";
 import { crowdfundAbi } from "~~/types/crowdfund";
 
 export default function CampaignDetails() {
@@ -14,6 +16,7 @@ export default function CampaignDetails() {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [topDonors, setTopDonors] = useState<{ address: string; amount: bigint }[]>([]);
   const { address: userAddress } = useAccount();
+  const { toast, showToast, hideToast } = useToast();
 
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
@@ -21,6 +24,7 @@ export default function CampaignDetails() {
 
   const [isCancelling, setIsCancelling] = useState(false);
   const [userContribution, setUserContribution] = useState<bigint>(0n);
+  const [claimableAmount, setClaimableAmount] = useState<bigint>(0n);
 
   useEffect(() => {
     const fetchTopDonors = async () => {
@@ -83,13 +87,22 @@ export default function CampaignDetails() {
           args: [userAddress],
         });
         setUserContribution(contribution as bigint);
+
+        // Get all user contributions to check which ones are withdrawn
+        const contributions = await publicClient.readContract({
+          address: address as `0x${string}`,
+          abi: crowdfundAbi,
+          functionName: "getClaimableAmount",
+          args: [userAddress],
+        });
+        setClaimableAmount(contributions as bigint);
       } catch (error) {
         console.error("Error fetching user contribution:", error);
       }
     };
 
     fetchUserContribution();
-  }, [address, publicClient, userAddress]);
+  }, [address, publicClient, userAddress, isWithdrawing]);
 
   const handleContribute = async () => {
     if (!contribution || !walletClient || !address) {
@@ -99,7 +112,6 @@ export default function CampaignDetails() {
 
     setIsContributing(true);
     try {
-      // Send transaction directly using walletClient
       const hash = await walletClient.writeContract({
         address: address as `0x${string}`,
         abi: crowdfundAbi,
@@ -111,9 +123,10 @@ export default function CampaignDetails() {
       await publicClient.waitForTransactionReceipt({ hash });
       console.log("Transaction confirmed");
       setContribution("");
+      showToast(`Successfully contributed ${contribution} ETH to the campaign!`, "success");
     } catch (error) {
       console.error("Detailed contribution error:", error);
-      window.alert(`Failed to contribute: ${error instanceof Error ? error.message : "Unknown error"}`);
+      showToast(`Failed to contribute: ${error instanceof Error ? error.message : "Unknown error"}`, "error");
     } finally {
       setIsContributing(false);
     }
@@ -133,11 +146,35 @@ export default function CampaignDetails() {
       console.log("Claim transaction sent:", hash);
       await publicClient.waitForTransactionReceipt({ hash });
       console.log("Claim confirmed");
+      const message =
+        userAddress?.toLowerCase() === details._owner.toLowerCase()
+          ? "Successfully claimed campaign funds!"
+          : `Successfully claimed refund of ${formatEther(userContribution)} ETH!`;
+      showToast(message, "success");
     } catch (error) {
       console.error("Claim error:", error);
-      window.alert(`Failed to claim: ${error instanceof Error ? error.message : "Unknown error"}`);
+      showToast(`Failed to claim: ${error instanceof Error ? error.message : "Unknown error"}`, "error");
     } finally {
       setIsWithdrawing(false);
+    }
+  };
+
+  const handleEndCampaign = async () => {
+    if (!walletClient || !address) return;
+
+    try {
+      const hash = await walletClient.writeContract({
+        address: address as `0x${string}`,
+        abi: crowdfundAbi,
+        functionName: "endCampaign",
+      });
+
+      console.log("End campaign transaction sent:", hash);
+      await publicClient.waitForTransactionReceipt({ hash });
+      console.log("Campaign ended early");
+    } catch (error) {
+      console.error("End campaign error:", error);
+      window.alert(`Failed to end campaign: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   };
 
@@ -279,7 +316,7 @@ export default function CampaignDetails() {
           </div>
 
           {/* Claim Refund Section - Available to all contributors */}
-          {userAddress && userContribution > 0n && (details.cancelled || (!details._goalReached && ended)) && (
+          {userAddress && claimableAmount > 0n && (details.cancelled || (!details._goalReached && ended)) && (
             <div className="mt-6 p-4 border rounded-lg bg-base-200">
               <h3 className="text-lg font-bold mb-2 border-b pb-2">Claim Refund</h3>
               <div className="space-y-4">
@@ -289,7 +326,7 @@ export default function CampaignDetails() {
                       ? "The campaign has been cancelled. You can claim your refund."
                       : "The campaign did not reach its goal. You can claim your refund."}
                   </p>
-                  <p className="text-sm font-semibold mb-2">Available to claim: {formatEther(userContribution)} ETH</p>
+                  <p className="text-sm font-semibold mb-2">Available to claim: {formatEther(claimableAmount)} ETH</p>
                   <button className="btn btn-primary" onClick={handleWithdraw} disabled={isWithdrawing}>
                     {isWithdrawing ? "Claiming..." : "Claim Refund"}
                   </button>
@@ -325,6 +362,23 @@ export default function CampaignDetails() {
                   </button>
                 </div>
 
+                {/* End Campaign Early - Only if goal reached */}
+                {details._goalReached && !ended && !details.cancelled && (
+                  <div className="pt-4 border-t">
+                    <h4 className="font-semibold mb-2">End Campaign Early</h4>
+                    <p className="text-sm mb-2">
+                      Campaign goal has been reached. You can end the campaign early to start claiming funds.
+                    </p>
+                    <button
+                      className="btn btn-warning"
+                      onClick={handleEndCampaign}
+                      disabled={!details._goalReached || ended || details.cancelled}
+                    >
+                      End Campaign Early
+                    </button>
+                  </div>
+                )}
+
                 {/* Cancel Campaign - Owner Only */}
                 <div className="pt-4 border-t">
                   <h4 className="font-semibold mb-2">Cancel Campaign</h4>
@@ -346,6 +400,7 @@ export default function CampaignDetails() {
           )}
         </div>
       </div>
+      {toast && <Toast message={toast.message} type={toast.type} onHide={hideToast} />}
     </div>
   );
 }

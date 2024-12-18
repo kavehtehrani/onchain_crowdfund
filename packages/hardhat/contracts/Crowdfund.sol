@@ -18,10 +18,10 @@ contract Crowdfund is ReentrancyGuard {
     error TransferFailed();
     error CampaignCancelled();
     error AlreadyWithdrawn();
+    error CampaignNotSuccessful();
 
     struct Contribution {
-        uint256 amount;
-        uint256 timestamp;
+        uint256 total;
         bool withdrawn;
     }
 
@@ -36,8 +36,9 @@ contract Crowdfund is ReentrancyGuard {
     bool public goalReached;
     bool public fundsClaimed;
     bool public cancelled;
+    bool public ended;
 
-    mapping(address => Contribution[]) public contributions;
+    mapping(address => Contribution) public contributions;
     address[] public contributors;
     address[] public topDonors;
 
@@ -45,6 +46,7 @@ contract Crowdfund is ReentrancyGuard {
     event FundsClaimed(address indexed owner, uint256 amount);
     event RefundClaimed(address indexed contributor, uint256 amount);
     event CampaignCancelledEvent(uint256 timestamp);
+    event CampaignEndedEarly(uint256 timestamp);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Not owner");
@@ -81,13 +83,11 @@ contract Crowdfund is ReentrancyGuard {
         if (cancelled) revert CampaignCancelled();
         if (msg.value == 0) revert NoContribution();
 
-        if (contributions[msg.sender].length == 0) {
+        if (contributions[msg.sender].total == 0) {
             contributors.push(msg.sender);
         }
 
-        contributions[msg.sender].push(
-            Contribution({ amount: msg.value, timestamp: block.timestamp, withdrawn: false })
-        );
+        contributions[msg.sender].total += msg.value;
 
         raisedAmount += msg.value;
         _updateTopDonors(msg.sender);
@@ -135,17 +135,11 @@ contract Crowdfund is ReentrancyGuard {
     function claimRefund() external isInitialized nonReentrant {
         if (goalReached && !cancelled) revert GoalAlreadyReached();
         if (block.timestamp < endTime && !cancelled) revert CampaignNotEnded();
-        if (cancelled) revert CampaignCancelled();
 
-        uint256 totalToRefund = 0;
-        Contribution[] storage userContributions = contributions[msg.sender];
-
-        for (uint256 i = 0; i < userContributions.length; i++) {
-            if (!userContributions[i].withdrawn) {
-                totalToRefund += userContributions[i].amount;
-                userContributions[i].withdrawn = true;
-            }
-        }
+        Contribution storage contribution = contributions[msg.sender];
+        if (contribution.withdrawn) revert NoContribution();
+        uint256 totalToRefund = contribution.total;
+        contribution.withdrawn = true;
 
         if (totalToRefund == 0) revert NoContribution();
 
@@ -171,12 +165,25 @@ contract Crowdfund is ReentrancyGuard {
 
     /// @notice Returns total contribution of an address
     function getTotalContribution(address _contributor) public view returns (uint256) {
-        uint256 total = 0;
-        Contribution[] memory userContributions = contributions[_contributor];
-        for (uint256 i = 0; i < userContributions.length; i++) {
-            total += userContributions[i].amount;
-        }
-        return total;
+        return contributions[_contributor].total;
+    }
+
+    /// @notice Returns total claimable amount for an address
+    function getClaimableAmount(address _contributor) public view returns (uint256) {
+        Contribution memory contribution = contributions[_contributor];
+        return contribution.withdrawn ? 0 : contribution.total;
+    }
+
+    /// @notice Allows the owner to end a successful campaign early
+    function endCampaign() external onlyOwner isInitialized {
+        if (!goalReached) revert CampaignNotSuccessful();
+        if (block.timestamp >= endTime) revert CampaignEnded();
+        if (cancelled) revert CampaignCancelled();
+
+        ended = true;
+        endTime = block.timestamp;
+
+        emit CampaignEndedEarly(block.timestamp);
     }
 
     /// @notice Returns campaign details
@@ -194,7 +201,8 @@ contract Crowdfund is ReentrancyGuard {
             bool _goalReached,
             bool _fundsClaimed,
             uint256 _contributorsCount,
-            bool _cancelled
+            bool _cancelled,
+            bool _ended
         )
     {
         return (
@@ -208,7 +216,8 @@ contract Crowdfund is ReentrancyGuard {
             goalReached,
             fundsClaimed,
             contributors.length,
-            cancelled
+            cancelled,
+            ended
         );
     }
 
