@@ -1,8 +1,11 @@
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatEther } from "viem";
+import { usePublicClient } from "wagmi";
 import { useCampaignDetails } from "~~/hooks/scaffold-eth/useCampaignDetails";
 
-const CampaignStatus = ({ details, isEnded }: { details: any; isEnded: boolean }) => {
+const CampaignStatus = ({ details, blockchainTime }: { details: any; blockchainTime: number }) => {
+  const isEnded = BigInt(details._endTime) < BigInt(blockchainTime);
   if (details.cancelled) {
     return <span className="badge badge-error">Cancelled</span>;
   }
@@ -16,7 +19,22 @@ const CampaignStatus = ({ details, isEnded }: { details: any; isEnded: boolean }
 };
 
 export const CampaignCard = ({ address }: { address: string }) => {
-  const { details, isLoading, error, getProgress, isEnded } = useCampaignDetails(address);
+  const [blockchainTime, setBlockchainTime] = useState<number>(0);
+  const publicClient = usePublicClient();
+
+  useEffect(() => {
+    const getBlockchainTime = async () => {
+      try {
+        const block = await publicClient.getBlock();
+        setBlockchainTime(Number(block.timestamp));
+      } catch (error) {
+        console.error("Error getting blockchain time:", error);
+      }
+    };
+    getBlockchainTime();
+  }, [publicClient]);
+
+  const { details, isLoading, error, getProgress } = useCampaignDetails(address, blockchainTime);
 
   if (isLoading) return <div>Loading...</div>;
   if (error) return <div>Error loading campaign</div>;
@@ -30,7 +48,7 @@ export const CampaignCard = ({ address }: { address: string }) => {
         <div className="card-body">
           <div className="flex justify-between items-center mb-2">
             <h2 className="card-title">{details._title}</h2>
-            <CampaignStatus details={details} isEnded={isEnded()} />
+            <CampaignStatus details={details} blockchainTime={blockchainTime} />
           </div>
           <p className="text-sm mb-4">{details._description}</p>
           <div className="stats stats-vertical lg:stats-horizontal shadow w-full">
@@ -48,6 +66,10 @@ export const CampaignCard = ({ address }: { address: string }) => {
             </div>
           </div>
           <div className="mt-4">
+            <div className="flex justify-between text-sm mb-2">
+              <span>Progress</span>
+              <span>{progress}%</span>
+            </div>
             <progress className="progress progress-primary w-full" value={progress} max="100" />
           </div>
         </div>

@@ -59,10 +59,9 @@ Comprehensive test suite in `test/CrowdfundingTests.ts` covering:
 1. Clone the repository
 2. Install dependencies:
 
-```bash
-yarn install
-```
-
+  ```bash
+  yarn install
+  ```
 3. Start local chain:
 
 ```bash
@@ -87,6 +86,23 @@ yarn start
 cd packages/hardhat
 yarn test
 ```
+
+## Development Features
+
+### Time Control
+
+The application includes a development-only time control mechanism for testing time-dependent features:
+
+- Located at the top of each campaign page
+- Allows advancing blockchain time by hours, days, or weeks
+- Shows current blockchain timestamp
+- Useful for testing:
+  - Campaign end conditions
+  - Time-based refund claims
+  - Early campaign ending
+  - Campaign expiration
+
+> Note: Time control is only available in development mode and affects the local Hardhat network's time.
 
 ## Security Features
 

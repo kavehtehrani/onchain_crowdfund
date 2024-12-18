@@ -15,16 +15,59 @@ export default function CampaignDetails() {
   const [isContributing, setIsContributing] = useState(false);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [topDonors, setTopDonors] = useState<{ address: string; amount: bigint }[]>([]);
+  const [blockchainTime, setBlockchainTime] = useState<number>(0);
   const { address: userAddress } = useAccount();
   const { toast, showToast, hideToast } = useToast();
 
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
-  const { details, isLoading, error, getProgress, isEnded, getTimeRemaining } = useCampaignDetails(address as string);
+  const {
+    details,
+    isLoading,
+    error,
+    getProgress,
+    isEnded,
+    getTimeRemaining,
+    refetch: refetchCampaignDetails,
+  } = useCampaignDetails(address as string, blockchainTime);
 
   const [isCancelling, setIsCancelling] = useState(false);
   const [userContribution, setUserContribution] = useState<bigint>(0n);
   const [claimableAmount, setClaimableAmount] = useState<bigint>(0n);
+
+  useEffect(() => {
+    const getBlockchainTime = async () => {
+      try {
+        const block = await publicClient.getBlock();
+        setBlockchainTime(Number(block.timestamp));
+      } catch (error) {
+        console.error("Error getting blockchain time:", error);
+      }
+    };
+    getBlockchainTime();
+  }, [publicClient]);
+
+  const moveTimeForward = async (seconds: number) => {
+    try {
+      const response = await fetch("/api/debug/increaseTime", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seconds }),
+      });
+
+      if (!response.ok) throw new Error("Failed to increase time");
+
+      const data = await response.json();
+      if (data.newTimestamp) {
+        setBlockchainTime(Number(data.newTimestamp));
+      }
+
+      await refetchCampaignDetails();
+    } catch (error) {
+      console.error("Error moving time:", error);
+      showToast("Failed to move time forward", "error");
+    }
+  };
 
   useEffect(() => {
     const fetchTopDonors = async () => {
@@ -109,6 +152,14 @@ export default function CampaignDetails() {
       console.log("Missing requirements:", { contribution, hasWallet: !!walletClient, address });
       return;
     }
+
+    console.log("here");
+
+    console.log("End time:", Number(details._endTime));
+    console.log("Current time:", Math.floor(Date.now() / 1000));
+    console.log("Time remaining:", Number(details._endTime) - Math.floor(Date.now() / 1000));
+    console.log("End time date:", new Date(Number(details._endTime) * 1000).toLocaleString());
+    console.log("Current time date:", new Date().toLocaleString());
 
     setIsContributing(true);
     try {
@@ -207,8 +258,29 @@ export default function CampaignDetails() {
   const progress = getProgress();
   const ended = isEnded();
 
+  // console.log(`${process.env.NODE_ENV}`);
+
   return (
     <div className="container mx-auto px-4 py-8">
+      {process.env.NODE_ENV === "development" && (
+        <div className="card bg-base-200 shadow-xl mb-6">
+          <div className="card-body">
+            <h2 className="card-title text-xl mb-4">⏰ Time Control (Development Only)</h2>
+            <div className="text-sm mb-4">Blockchain Time: {new Date(blockchainTime * 1000).toLocaleString()}</div>
+            <div className="flex gap-2">
+              <button className="btn btn-sm" onClick={() => moveTimeForward(3600)}>
+                +1 Hour
+              </button>
+              <button className="btn btn-sm" onClick={() => moveTimeForward(86400)}>
+                +1 Day
+              </button>
+              <button className="btn btn-sm" onClick={() => moveTimeForward(604800)}>
+                +1 Week
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="card bg-base-100 shadow-xl">
         <div className="card-body">
           <h1 className="card-title text-3xl mb-4">{details._title}</h1>

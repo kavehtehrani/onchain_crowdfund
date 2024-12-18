@@ -8,6 +8,7 @@ import "hardhat-gas-reporter";
 import "solidity-coverage";
 import "@nomicfoundation/hardhat-verify";
 import "hardhat-deploy";
+import { task } from "hardhat/config";
 
 // If not set, it uses ours Alchemy's default API key.
 // You can get your own at https://dashboard.alchemyapi.io
@@ -17,6 +18,17 @@ const deployerPrivateKey =
   process.env.DEPLOYER_PRIVATE_KEY ?? "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 // If not set, it uses ours Etherscan default API key.
 const etherscanApiKey = process.env.ETHERSCAN_API_KEY || "DNXJA8RX2Q3VZ4URQIWP7Z68CJXQZSC6AW";
+
+// Task to increase time
+task("increaseTime", "Increases the time in the hardhat network")
+  .addParam("seconds", "The number of seconds to increase")
+  .setAction(async (taskArgs, hre) => {
+    await hre.network.provider.send("evm_increaseTime", [Number(taskArgs.seconds)]);
+    await hre.network.provider.send("evm_mine");
+
+    const block = await hre.ethers.provider.getBlock("latest");
+    console.log(`Time increased by ${taskArgs.seconds} seconds. New timestamp: ${block?.timestamp}`);
+  });
 
 const config: HardhatUserConfig = {
   solidity: {
