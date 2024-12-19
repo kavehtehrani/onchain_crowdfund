@@ -24,6 +24,8 @@ export const CampaignCard = ({ address }: { address: string }) => {
 
   useEffect(() => {
     const getBlockchainTime = async () => {
+      if (!publicClient) return;
+
       try {
         const block = await publicClient.getBlock();
         setBlockchainTime(Number(block.timestamp));

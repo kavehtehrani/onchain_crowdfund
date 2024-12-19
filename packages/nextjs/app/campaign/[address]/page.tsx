@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import type { NextPage } from "next";
 import { formatEther, parseEther } from "viem";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { Toast } from "~~/components/Toast";
@@ -9,7 +10,7 @@ import { useCampaignDetails } from "~~/hooks/scaffold-eth/useCampaignDetails";
 import { useToast } from "~~/hooks/useToast";
 import { crowdfundAbi } from "~~/types/crowdfund";
 
-export default function CampaignDetails() {
+const CampaignDetails: NextPage = () => {
   const { address } = useParams();
   const [contribution, setContribution] = useState("");
   const [isContributing, setIsContributing] = useState(false);
@@ -37,6 +38,8 @@ export default function CampaignDetails() {
 
   useEffect(() => {
     const getBlockchainTime = async () => {
+      if (!publicClient) return;
+
       try {
         const block = await publicClient.getBlock();
         setBlockchainTime(Number(block.timestamp));
@@ -148,18 +151,16 @@ export default function CampaignDetails() {
   }, [address, publicClient, userAddress, isWithdrawing]);
 
   const handleContribute = async () => {
-    if (!contribution || !walletClient || !address) {
-      console.log("Missing requirements:", { contribution, hasWallet: !!walletClient, address });
+    if (!contribution || !walletClient || !address || !publicClient || !details) {
+      console.error("Missing requirements:", { contribution, hasWallet: !!walletClient, address });
       return;
     }
 
-    console.log("here");
-
-    console.log("End time:", Number(details._endTime));
-    console.log("Current time:", Math.floor(Date.now() / 1000));
-    console.log("Time remaining:", Number(details._endTime) - Math.floor(Date.now() / 1000));
-    console.log("End time date:", new Date(Number(details._endTime) * 1000).toLocaleString());
-    console.log("Current time date:", new Date().toLocaleString());
+    console.debug("End time:", Number(details._endTime));
+    console.debug("Current time:", Math.floor(Date.now() / 1000));
+    console.debug("Time remaining:", Number(details._endTime) - Math.floor(Date.now() / 1000));
+    console.debug("End time date:", new Date(Number(details._endTime) * 1000).toLocaleString());
+    console.debug("Current time date:", new Date().toLocaleString());
 
     setIsContributing(true);
     try {
@@ -170,13 +171,13 @@ export default function CampaignDetails() {
         value: parseEther(contribution),
       });
 
-      console.log("Transaction sent:", hash);
+      console.debug("Transaction sent:", hash);
       await publicClient.waitForTransactionReceipt({ hash });
-      console.log("Transaction confirmed");
+      console.debug("Transaction confirmed");
       setContribution("");
       showToast(`Successfully contributed ${contribution} ETH to the campaign!`, "success");
     } catch (error) {
-      console.error("Detailed contribution error:", error);
+      console.error("Contribution error:", error);
       showToast(`Failed to contribute: ${error instanceof Error ? error.message : "Unknown error"}`, "error");
     } finally {
       setIsContributing(false);
@@ -184,21 +185,21 @@ export default function CampaignDetails() {
   };
 
   const handleWithdraw = async () => {
-    if (!walletClient || !address) return;
+    if (!walletClient || !address || !publicClient || !details || !userAddress) return;
 
     setIsWithdrawing(true);
     try {
       const hash = await walletClient.writeContract({
         address: address as `0x${string}`,
         abi: crowdfundAbi,
-        functionName: userAddress?.toLowerCase() === details._owner.toLowerCase() ? "claimFunds" : "claimRefund",
+        functionName: userAddress.toLowerCase() === details._owner.toLowerCase() ? "claimFunds" : "claimRefund",
       });
 
       console.log("Claim transaction sent:", hash);
       await publicClient.waitForTransactionReceipt({ hash });
       console.log("Claim confirmed");
       const message =
-        userAddress?.toLowerCase() === details._owner.toLowerCase()
+        userAddress.toLowerCase() === details._owner.toLowerCase()
           ? "Successfully claimed campaign funds!"
           : `Successfully claimed refund of ${formatEther(userContribution)} ETH!`;
       showToast(message, "success");
@@ -211,7 +212,7 @@ export default function CampaignDetails() {
   };
 
   const handleEndCampaign = async () => {
-    if (!walletClient || !address) return;
+    if (!walletClient || !address || !publicClient) return;
 
     try {
       const hash = await walletClient.writeContract({
@@ -220,17 +221,18 @@ export default function CampaignDetails() {
         functionName: "endCampaign",
       });
 
-      console.log("End campaign transaction sent:", hash);
+      console.debug("End campaign transaction sent:", hash);
       await publicClient.waitForTransactionReceipt({ hash });
-      console.log("Campaign ended early");
+      console.debug("Campaign ended early");
+      showToast("Campaign ended successfully", "success");
     } catch (error) {
       console.error("End campaign error:", error);
-      window.alert(`Failed to end campaign: ${error instanceof Error ? error.message : "Unknown error"}`);
+      showToast(`Failed to end campaign: ${error instanceof Error ? error.message : "Unknown error"}`, "error");
     }
   };
 
   const handleCancel = async () => {
-    if (!walletClient || !address) return;
+    if (!walletClient || !address || !publicClient) return;
 
     setIsCancelling(true);
     try {
@@ -240,12 +242,13 @@ export default function CampaignDetails() {
         functionName: "cancelCampaign",
       });
 
-      console.log("Cancel transaction sent:", hash);
+      console.debug("Cancel transaction sent:", hash);
       await publicClient.waitForTransactionReceipt({ hash });
-      console.log("Campaign cancelled");
+      console.debug("Campaign cancelled");
+      showToast("Campaign cancelled successfully", "success");
     } catch (error) {
       console.error("Cancel error:", error);
-      window.alert(`Failed to cancel: ${error instanceof Error ? error.message : "Unknown error"}`);
+      showToast(`Failed to cancel: ${error instanceof Error ? error.message : "Unknown error"}`, "error");
     } finally {
       setIsCancelling(false);
     }
@@ -475,4 +478,6 @@ export default function CampaignDetails() {
       {toast && <Toast message={toast.message} type={toast.type} onHide={hideToast} />}
     </div>
   );
-}
+};
+
+export default CampaignDetails;
