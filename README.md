@@ -59,9 +59,10 @@ Comprehensive test suite in `test/CrowdfundingTests.ts` covering:
 1. Clone the repository
 2. Install dependencies:
 
-  ```bash
-  yarn install
-  ```
+```bash
+yarn install
+```
+
 3. Start local chain:
 
 ```bash
@@ -112,6 +113,14 @@ The application includes a development-only time control mechanism for testing t
 - State validation
 - Custom errors for gas efficiency
 - Safe math with Solidity 0.8.x
+
+## Potential Improvements
+
+- Add frontend/backend for serving multimedia content for the project description
+- More granular access control for campaign owners
+  - Allow voting on single issues
+  - Tiers of rewards for different contributions based on amount / tenor
+  - Allow campaign owners to set up a vesting schedule for the funds
 
 ## Technology Stack
 
